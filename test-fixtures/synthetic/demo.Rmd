@@ -1,0 +1,12 @@
+---
+title: 'Synthetic Runner Test'
+output: html_document
+---
+
+```{r}
+stopifnot(file.exists('Inputs/demo.xlsx'))
+x <- readxl::read_excel('Inputs/demo.xlsx',sheet='RawData')
+out <- data.frame(test='synthetic',count=nrow(x))
+openxlsx::write.xlsx(out,'Outputs/synthetic-result.xlsx')
+print(out)
+```

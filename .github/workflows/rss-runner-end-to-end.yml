@@ -1,0 +1,35 @@
+name: FRA RSS — end-to-end synthetic runner
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.4.3'
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            any::openxlsx
+            any::readxl
+            any::rmarkdown
+            any::knitr
+          cache-version: 1
+      - name: Create synthetic workbook
+        run: Rscript scripts/ci/make-synthetic-workbook.R
+      - name: Run RMarkdown end-to-end (synthetic only)
+        run: Rscript scripts/ci/run-rss.R test-fixtures/synthetic/demo.xlsx test-fixtures/synthetic/demo.Rmd test-fixtures/synthetic/results
+      - name: Verify output
+        run: |
+          test -s test-fixtures/synthetic/results/synthetic-result.xlsx
+          test -s test-fixtures/synthetic/results/FRA_RSS_render.html
+          echo "PASS: end-to-end synthetic R runner"
