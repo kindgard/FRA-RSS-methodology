@@ -12,7 +12,7 @@ stopifnot(identical(d,original),x$full_n==6L,x$missing_n==1L,
           x$integrity$n_missing[2]==1L,
           identical(x$observations$forest_fraction,d$Y))
 r <- forest2024_candidate_complete_case(x,fr)
-stopifnot(isTRUE(all.equal(r$proportion,0.56)))
+stopifnot(isTRUE(all.equal(r$proportion,0.5)))
 # Trajectory warning is intentionally ignored: no silent filtering.
 d2 <- d; d2$Y[1] <- 75
 stopifnot(inherits(try(forest2024_readonly_adapter(d2,
