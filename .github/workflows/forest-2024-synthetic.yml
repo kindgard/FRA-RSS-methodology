@@ -8,10 +8,12 @@ on:
       - 'R/forest_2024_reconstructed.R'
       - 'R/forest_2024_audit.R'
       - 'R/forest_2024_readonly_adapter.R'
+      - 'R/oliver_input_contract.R'
       - 'tests/test_forest_2024_synthetic.R'
       - 'tests/test_forest_2024_reconstructed.R'
       - 'tests/test_forest_2024_audit.R'
       - 'tests/test_forest_2024_readonly_adapter.R'
+      - 'tests/test_oliver_input_contract.R'
       - '.github/workflows/forest-2024-synthetic.yml'
   pull_request:
     paths:
@@ -34,3 +36,4 @@ jobs:
           Rscript tests/test_forest_2024_reconstructed.R
           Rscript tests/test_forest_2024_audit.R
           Rscript tests/test_forest_2024_readonly_adapter.R
+          Rscript tests/test_oliver_input_contract.R
