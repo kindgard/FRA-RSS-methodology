@@ -22,6 +22,8 @@ on:
       - 'tests/test_rss_calibration_variance.R'
       - 'R/rss_calibration_compare.R'
       - 'tests/test_rss_calibration_compare.R'
+      - 'R/rss_hexagon_area_transitions.R'
+      - 'tests/test_rss_hexagon_area_transitions.R'
       - '.github/workflows/forest-2024-synthetic.yml'
   pull_request:
     paths:
@@ -47,5 +49,6 @@ jobs:
           Rscript tests/test_oliver_input_contract.R
           Rscript tests/test_rss_calibration_variance.R
           Rscript tests/test_rss_calibration_compare.R
+          Rscript tests/test_rss_hexagon_area_transitions.R
           Rscript tests/test_rss_joint_change.R
           Rscript tests/test_rss_multivariable.R
