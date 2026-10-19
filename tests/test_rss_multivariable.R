@@ -1,0 +1,6 @@
+source('R/rss_multivariable.R')
+d <- data.frame(stratum=c('A','A','A','A','B','B','B','B'),forest=c(1,.5,.5,0,0,.25,.5,.25))
+f <- data.frame(stratum=c('A','B'),Nh=c(100,200))
+r <- rss_multivariable(d,f,'forest')
+stopifnot(abs(r$proportion[1]-1/3)<1e-12)
+cat('Synthetic multivariable estimator: PASS\n')
