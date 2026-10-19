@@ -6,8 +6,10 @@ on:
     paths:
       - 'R/forest_2024_synthetic.R'
       - 'R/forest_2024_reconstructed.R'
+      - 'R/forest_2024_audit.R'
       - 'tests/test_forest_2024_synthetic.R'
       - 'tests/test_forest_2024_reconstructed.R'
+      - 'tests/test_forest_2024_audit.R'
       - '.github/workflows/forest-2024-synthetic.yml'
   pull_request:
     paths:
@@ -28,3 +30,4 @@ jobs:
         run: |
           Rscript tests/test_forest_2024_synthetic.R
           Rscript tests/test_forest_2024_reconstructed.R
+          Rscript tests/test_forest_2024_audit.R
