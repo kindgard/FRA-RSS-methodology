@@ -5,7 +5,9 @@ on:
     branches: [main, feature/forest-2024-synthetic]
     paths:
       - 'R/forest_2024_synthetic.R'
+      - 'R/forest_2024_reconstructed.R'
       - 'tests/test_forest_2024_synthetic.R'
+      - 'tests/test_forest_2024_reconstructed.R'
       - '.github/workflows/forest-2024-synthetic.yml'
   pull_request:
     paths:
@@ -23,4 +25,6 @@ jobs:
         with:
           use-public-rspm: true
       - name: Run Forest 2024 synthetic tests
-        run: Rscript tests/test_forest_2024_synthetic.R
+        run: |
+          Rscript tests/test_forest_2024_synthetic.R
+          Rscript tests/test_forest_2024_reconstructed.R
