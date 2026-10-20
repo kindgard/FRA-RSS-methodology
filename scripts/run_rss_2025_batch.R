@@ -18,6 +18,8 @@ source("R/rss_oliver_category_mapping.R")
 source("R/rss_oliver_category_audit.R")
 source("R/rss_oliver_calibration.R")
 source("R/rss_oliver_calibration_closure.R")
+source("R/rss_oliver_drivers_pastoral.R")
+source("R/rss_oliver_thematic_batch.R")
 save_csv<-function(x,name)utils::write.csv(x,file.path(out,name),row.names=FALSE,na="")
 statuses<-data.frame(module=character(),status=character(),reason=character())
 status<-function(module,state,reason=""){
@@ -103,7 +105,7 @@ if(!"IPCC24"%in%names(raw)){
   }else status("ipcc_subclasses","REVIEW","Nonclosing strata retained in diagnostics, not promoted")
  }
 }
-status("drivers","BLOCKED","Exact multi-period driver classification and calibration not yet integrated")
-status("crops_pastoralism","BLOCKED","Exact Oliver categorical indicators not yet integrated")
+rss_oliver_run_thematic(raw,hex,save_csv,status)
+status("crops","BLOCKED","Exact Oliver TempOrPerenn crops module not yet integrated")
 status("full_notebook_equivalence","BLOCKED","No complete original-notebook equivalence test yet")
 cat("Batch finished. Private outputs:",out,"\n")
