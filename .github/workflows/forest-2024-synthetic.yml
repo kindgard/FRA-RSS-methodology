@@ -30,6 +30,8 @@ on:
       - 'tests/test_rss_oliver_hexagon.R'
       - 'R/rss_oliver_report_domains.R'
       - 'tests/test_rss_oliver_report_domains.R'
+      - 'R/rss_oliver_centroid.R'
+      - 'tests/test_rss_oliver_centroid.R'
       - '.github/workflows/forest-2024-synthetic.yml'
   pull_request:
     paths:
@@ -59,5 +61,6 @@ jobs:
           Rscript tests/test_rss_expansion_crosscheck.R
           Rscript tests/test_rss_oliver_hexagon.R
           Rscript tests/test_rss_oliver_report_domains.R
+          Rscript tests/test_rss_oliver_centroid.R
           Rscript tests/test_rss_joint_change.R
           Rscript tests/test_rss_multivariable.R
