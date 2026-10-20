@@ -19,5 +19,5 @@ stopifnot(abs(loss$area_Mha-16/1e4)<1e-12,
   abs(loss$se_Mha-sqrt((.02/2)*20^2+(.02/2)*40^2)/1e4)<1e-12)
 annual<-rss_oliver_annual_change(r$Global[r$Global$variable!="FOREST%24",])
 stopifnot(nrow(annual)==3,abs(annual$loss_Mha-loss$area_Mha)<1e-12,
-  abs(annual$annual_loss_Mha-loss$area_Mha/10)<1e-12)
+  abs(annual$annual_loss_Mha[annual$period=="2000-2010"]-loss$area_Mha/10)<1e-12)
 cat("Oliver multi-domain and annual change synthetic: PASS\n")
