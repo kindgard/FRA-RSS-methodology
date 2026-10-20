@@ -1,5 +1,5 @@
 # Synthetic static contract tests: never use a real RAW on GitHub Actions.
-files<-c("scripts/run_rss_2025_batch.R","R/rss_oliver_regions.R")
+files<-c("scripts/run_rss_2025_batch.R","R/rss_oliver_regions.R","scripts/build_draft_tables.R")
 for(f in files)stopifnot(length(parse(f))>0L)
 source("R/rss_oliver_regions.R")
 source("R/rss_oliver_report_domains.R")
