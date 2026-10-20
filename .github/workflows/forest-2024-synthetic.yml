@@ -1,0 +1,90 @@
+name: Forest 2024 synthetic validation
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, feature/forest-2024-synthetic]
+    paths:
+      - 'R/forest_2024_synthetic.R'
+      - 'R/forest_2024_reconstructed.R'
+      - 'R/forest_2024_audit.R'
+      - 'R/forest_2024_readonly_adapter.R'
+      - 'R/oliver_input_contract.R'
+      - 'tests/test_forest_2024_synthetic.R'
+      - 'tests/test_forest_2024_reconstructed.R'
+      - 'tests/test_forest_2024_audit.R'
+      - 'tests/test_forest_2024_readonly_adapter.R'
+      - 'tests/test_oliver_input_contract.R'
+      - 'R/rss_multivariable.R'
+      - 'R/rss_joint_change.R'
+      - 'R/rss_calibration_variance.R'
+      - 'tests/test_rss_multivariable.R'
+      - 'tests/test_rss_joint_change.R'
+      - 'tests/test_rss_calibration_variance.R'
+      - 'R/rss_calibration_compare.R'
+      - 'tests/test_rss_calibration_compare.R'
+      - 'R/rss_hexagon_area_transitions.R'
+      - 'R/rss_expansion_crosscheck.R'
+      - 'tests/test_rss_hexagon_area_transitions.R'
+      - 'tests/test_rss_expansion_crosscheck.R'
+      - 'R/rss_oliver_hexagon.R'
+      - 'tests/test_rss_oliver_hexagon.R'
+      - 'R/rss_oliver_report_domains.R'
+      - 'tests/test_rss_oliver_report_domains.R'
+      - 'R/rss_oliver_centroid.R'
+      - 'tests/test_rss_oliver_centroid.R'
+      - 'R/rss_oliver_calibration.R'
+      - 'tests/test_rss_oliver_calibration.R'
+      - 'R/rss_oliver_category_mapping.R'
+      - 'tests/test_rss_oliver_category_mapping.R'
+      - 'R/rss_oliver_calibration_closure.R'
+      - 'tests/test_rss_oliver_calibration_closure.R'
+      - 'R/rss_oliver_category_audit.R'
+      - 'tests/test_rss_oliver_category_audit.R'
+      - 'R/rss_oliver_regions.R'
+      - 'scripts/run_rss_2025_batch.R'
+      - 'tests/test_rss_batch_contract.R'
+      - 'docs/RAW_update_protocol.md'
+      - 'scripts/build_draft_tables.R'
+      - 'docs/draft_tables_figures_plan.md'
+      - 'R/rss_oliver_drivers_pastoral.R'
+      - 'R/rss_oliver_thematic_batch.R'
+      - 'tests/test_rss_thematic_batch.R'
+      - 'R/rss_thematic_qa.R'
+      - '.github/workflows/forest-2024-synthetic.yml'
+  pull_request:
+    paths:
+      - 'R/forest_2024_synthetic.R'
+      - 'tests/test_forest_2024_synthetic.R'
+      - '.github/workflows/forest-2024-synthetic.yml'
+permissions:
+  contents: read
+jobs:
+  synthetic-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+      - name: Run Forest 2024 synthetic tests
+        run: |
+          Rscript tests/test_forest_2024_synthetic.R
+          Rscript tests/test_forest_2024_reconstructed.R
+          Rscript tests/test_forest_2024_audit.R
+          Rscript tests/test_forest_2024_readonly_adapter.R
+          Rscript tests/test_oliver_input_contract.R
+          Rscript tests/test_rss_calibration_variance.R
+          Rscript tests/test_rss_calibration_compare.R
+          Rscript tests/test_rss_hexagon_area_transitions.R
+          Rscript tests/test_rss_expansion_crosscheck.R
+          Rscript tests/test_rss_oliver_hexagon.R
+          Rscript tests/test_rss_oliver_report_domains.R
+          Rscript tests/test_rss_oliver_centroid.R
+          Rscript tests/test_rss_oliver_calibration.R
+          Rscript tests/test_rss_oliver_category_mapping.R
+          Rscript tests/test_rss_oliver_calibration_closure.R
+          Rscript tests/test_rss_oliver_category_audit.R
+          Rscript tests/test_rss_batch_contract.R
+          Rscript tests/test_rss_thematic_batch.R
+          Rscript tests/test_rss_joint_change.R
+          Rscript tests/test_rss_multivariable.R

@@ -1,0 +1,8 @@
+# NC85 adaptation — observed private audit caveats (no confidential figures)
+The authoritative input is the single-sheet BA_NC85 workbook. The public R implementation mirrors the RSS Analysis 2025 notebook Hexagon Calculations: mean(x,na.rm=TRUE) per Subregion × GEZ × Nstr, var(x)/n for n>1, zero for singleton n, area = mean * cell population area, and variance aggregation by summation.
+
+**Missingness is a material methodological issue.** The NC85 2024 coverage fields have missing values. Oliver's means exclude NA, whereas var(x) has no na.rm option in this block. Therefore the original R formula yields NA variances for affected groups. A previously reported numerical SE obtained by omitting their variance contributions must **not** be described as Oliver-equivalent. The ratio of aggregated means to raw direct expansion can differ when whole-cell area is multiplied by a complete-case mean. Do not fill NA as 0, do not skip missing cell variances, and do not silently suppress warnings.
+
+**Numerical weights.** NC85 EFKm2 is nearly but not always exactly constant in each subregion × GEZ × Nstr cell. The public adapter checks relative within-cell disagreement. Reference workbook's area weight needs comparison at full retained precision for exact equality.
+
+The read-only private audit found that all 12 transition fractions have complete observations, while all four 2024 area fractions have missing observations; the coverage SE and exact missingness policy need explicit resolution. Never publish row-level institutional data, official private estimates, or private generated summaries to this repo.
