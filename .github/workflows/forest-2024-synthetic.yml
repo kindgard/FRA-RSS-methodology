@@ -46,6 +46,9 @@ on:
       - 'docs/RAW_update_protocol.md'
       - 'scripts/build_draft_tables.R'
       - 'docs/draft_tables_figures_plan.md'
+      - 'R/rss_oliver_drivers_pastoral.R'
+      - 'R/rss_oliver_thematic_batch.R'
+      - 'tests/test_rss_thematic_batch.R'
       - '.github/workflows/forest-2024-synthetic.yml'
   pull_request:
     paths:
@@ -81,5 +84,6 @@ jobs:
           Rscript tests/test_rss_oliver_calibration_closure.R
           Rscript tests/test_rss_oliver_category_audit.R
           Rscript tests/test_rss_batch_contract.R
+          Rscript tests/test_rss_thematic_batch.R
           Rscript tests/test_rss_joint_change.R
           Rscript tests/test_rss_multivariable.R
