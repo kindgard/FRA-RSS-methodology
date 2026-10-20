@@ -107,4 +107,5 @@ if(!"IPCC24"%in%names(raw)){
 }
 rss_oliver_run_thematic(raw,hex,save_csv,status)
 status("full_notebook_equivalence","BLOCKED","No complete original-notebook equivalence test yet")
+finish()
 cat("Batch finished. Private outputs:",out,"\n")
