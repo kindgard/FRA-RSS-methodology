@@ -91,4 +91,34 @@ rss_oliver_run_thematic <- function(raw,hex,save_csv,status) {
      status("pastoralism","READY_FOR_REVIEW","Calibrated 2024 category areas; pastoral subset interpretation requires review")
    }
  }
+ # Crop categories share the Other Land 2024 calibration reference.
+ if(!"TempOrPerenn"%in%names(raw)) {
+   status("crops","BLOCKED","Missing TempOrPerenn")
+ } else if(!"LU24CEN"%in%names(raw)) {
+   status("crops","BLOCKED","Missing LU24CEN reference")
+ } else {
+   cp<-rss_oliver_onehot(raw,"TempOrPerenn","CROP__",
+                         "Not applicable (crops)")
+   cd<-cp$dictionary
+   cd$parent<-"OL%24"
+   save_csv(cd,"crops_dictionary.csv")
+   cropd<-cbind(raw[,key,drop=FALSE],cp$indicators)
+   ref<-raw[,key,drop=FALSE]
+   ref[["OL%24"]]<-as.numeric(as.character(raw$LU24CEN)=="Other Land")
+   target<-hex$by_cell[hex$by_cell$variable=="OL%24",,drop=FALSE]
+   if(anyNA(target$area_km2)|anyNA(target$area_variance_km4)) {
+     status("crops","REVIEW","Other Land 2024 reference uncertainty undefined")
+   } else {
+     cell<-rss_oliver_hexagon(cropd,cd$variable)$by_cell
+     refs<-rss_oliver_hexagon(ref,"OL%24")$by_cell
+     cal<-rss_oliver_calibrate(cell,target,cd[,c("variable","parent")],
+                              centroid_reference_cells=refs)
+     save_csv(cal,"crops_calibrated_by_stratum.csv")
+     cal<-cal[cd$label[match(cal$variable,cd$variable)]!="Not applicable (crops)",,drop=FALSE]
+     domains<-rss_oliver_domains(cal,rss_oliver_region_mapping())
+     for(n in names(domains))save_csv(domains[[n]],paste0("crops_",n,".csv"))
+     status("crops","READY_FOR_REVIEW","Oliver crop category indicators calibrated to OL; requires exact notebook comparison")
+   }
+ }
+
 }
