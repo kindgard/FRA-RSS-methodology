@@ -14,6 +14,7 @@ d$Ranch_Pastoralism<-c("11_p_Forest_nat_stocked_Pastoralism",
  "11_np_Forest_nat_stocked_NO_Pastoralism","23_p_Grassland_no_trees_Non_manage_Pastoralism",
  "Not applicable (ranch and pastoralism)")
 d$LU24CEN<-c("Forest","Forest","Other Land","Other Land")
+d$TempOrPerenn<-c("NA","NA","Maize_NoT_Smallscale","NA")
 for(v in c("FOREST%24","OWL%24","OL%24","WATER%24"))d[[v]]<-as.numeric(d$LU24CEN==switch(v,
  "FOREST%24"="Forest","OWL%24"="Other Wooded Land",
  "OL%24"="Other Land","WATER%24"="Water"))
@@ -30,8 +31,8 @@ saved<-character(); states<-data.frame(module=character(),status=character())
 save_csv<-function(x,n){write.csv(x,file.path(dir,n),row.names=FALSE);saved<<-c(saved,n)}
 status<-function(m,s,r){states<<-rbind(states,data.frame(module=m,status=s))}
 rss_oliver_run_thematic(d,x,save_csv,status)
-stopifnot(any(states$module=="drivers"),any(states$module=="pastoralism"),
- "drivers_dictionary.csv"%in%saved,"pastoralism_dictionary.csv"%in%saved,
+stopifnot(any(states$module=="drivers"),any(states$module=="pastoralism"),any(states$module=="crops"),
+ "drivers_dictionary.csv"%in%saved,"pastoralism_dictionary.csv"%in%saved,"crops_dictionary.csv"%in%saved,
  all(states$status=="READY_FOR_REVIEW"))
 unlink(dir,recursive=TRUE)
 cat("Thematic drivers and pastoralism synthetic: PASS\n")
