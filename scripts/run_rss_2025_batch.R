@@ -106,6 +106,5 @@ if(!"IPCC24"%in%names(raw)){
  }
 }
 rss_oliver_run_thematic(raw,hex,save_csv,status)
-status("crops","BLOCKED","Exact Oliver TempOrPerenn crops module not yet integrated")
 status("full_notebook_equivalence","BLOCKED","No complete original-notebook equivalence test yet")
 cat("Batch finished. Private outputs:",out,"\n")
