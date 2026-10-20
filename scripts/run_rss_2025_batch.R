@@ -12,6 +12,7 @@ dir.create(out,recursive=TRUE,showWarnings=FALSE)
 if(length(list.files(out,all.files=TRUE,no..=TRUE)))stop("Output directory must be EMPTY")
 source("R/rss_oliver_hexagon.R")
 source("R/rss_oliver_report_domains.R")
+source("R/rss_oliver_regions.R")
 source("R/rss_oliver_centroid.R")
 source("R/rss_oliver_category_mapping.R")
 source("R/rss_oliver_category_audit.R")
@@ -59,7 +60,7 @@ if(anyNA(hex$by_cell$area_variance_km4)){
  status("hexagon_uncertainty","PASS","Original Oliver variance / n and singleton zero")
  valid_variables<-unique(hex$by_cell$variable)
 }
-domain<-rss_oliver_domains(hex$by_cell[hex$by_cell$variable%in%valid_variables,,drop=FALSE])
+domain<-rss_oliver_domains(hex$by_cell[hex$by_cell$variable%in%valid_variables,,drop=FALSE],rss_oliver_region_mapping())
 for(n in names(domain))save_csv(domain[[n]],paste0("hexagon_",n,".csv"))
 status("hexagon_domains","PASS","Output excludes variables with undefined variance")
 if(all(c(paste0("%FORLOSS ",periods),paste0("%FORGAIN ",periods))%in%domain$Global$variable)){
@@ -96,7 +97,8 @@ if(!"IPCC24"%in%names(raw)){
   save_csv(data.frame(variable=l3vars,label=map$level_3_subclass,
      parent=map$level_1_subclass),"calibration_l3_dictionary.csv")
   if(all(closure$pass)) {
-    for(n in names(rss_oliver_domains(cal)))save_csv(rss_oliver_domains(cal)[[n]],paste0("calibrated_l3_",n,".csv"))
+    cal_domains<-rss_oliver_domains(cal,rss_oliver_region_mapping())
+    for(n in names(cal_domains))save_csv(cal_domains[[n]],paste0("calibrated_l3_",n,".csv"))
     status("ipcc_subclasses","PASS","L3 area calibration and closure; Oliver unscaled variances")
   }else status("ipcc_subclasses","REVIEW","Nonclosing strata retained in diagnostics, not promoted")
  }
