@@ -9,6 +9,8 @@ rss_oliver_run_thematic <- function(raw,hex,save_csv,status) {
  if(!all(c(key,drivers,changes)%in%names(raw))){
   status("drivers","BLOCKED",paste("Missing",paste(setdiff(c(drivers,changes),names(raw)),collapse=", ")))
  } else {
+  qa<-rss_thematic_qa(raw)
+  save_csv(qa,"drivers_consistency_QA.csv")
   dp<-rss_oliver_multicategory(raw,drivers,"Not applicable (driver)","DRV")
   prep<-raw[,key,drop=FALSE]
   dict<-list()
@@ -32,8 +34,8 @@ rss_oliver_run_thematic <- function(raw,hex,save_csv,status) {
     unique(x[!is.na(x)&!x%in%c("Forest Loss","Forest gain","Forest Gain",
       "Stable Non Forest","Stable Forest")])
   })))
-  if(length(unknown)){
-   status("drivers","REVIEW",paste("Unexpected CHANGE labels",paste(unknown,collapse="; ")))
+  if(length(unknown)||any(qa$status!="PASS")){
+   status("drivers","REVIEW",paste("Driver/CHANGE mismatch or unknown labels:",paste(unknown,collapse="; ")))
   }else{
    vals<-unique(dic$variable)
    base<-unique(dic$parent)
@@ -63,6 +65,7 @@ rss_oliver_run_thematic <- function(raw,hex,save_csv,status) {
  } else if(!"LU24CEN"%in%names(raw)){
    status("pastoralism","BLOCKED","Missing LU24CEN reference")
  } else {
+   save_csv(rss_thematic_subset_qa(raw,"Ranch_Pastoralism","Not applicable (ranch and pastoralism)"),"pastoralism_applicability_QA.csv")
    p<-rss_oliver_onehot(raw,"Ranch_Pastoralism","PAST__",
                         "Not applicable (ranch and pastoralism)")
    dict<-p$dictionary
@@ -97,6 +100,7 @@ rss_oliver_run_thematic <- function(raw,hex,save_csv,status) {
  } else if(!"LU24CEN"%in%names(raw)) {
    status("crops","BLOCKED","Missing LU24CEN reference")
  } else {
+   save_csv(rss_thematic_subset_qa(raw,"TempOrPerenn","Not applicable (crops)"),"crops_applicability_QA.csv")
    cp<-rss_oliver_onehot(raw,"TempOrPerenn","CROP__",
                          "Not applicable (crops)")
    cd<-cp$dictionary
