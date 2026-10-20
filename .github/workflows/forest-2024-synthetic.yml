@@ -44,6 +44,8 @@ on:
       - 'scripts/run_rss_2025_batch.R'
       - 'tests/test_rss_batch_contract.R'
       - 'docs/RAW_update_protocol.md'
+      - 'scripts/build_draft_tables.R'
+      - 'docs/draft_tables_figures_plan.md'
       - '.github/workflows/forest-2024-synthetic.yml'
   pull_request:
     paths:
