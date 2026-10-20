@@ -49,6 +49,7 @@ on:
       - 'R/rss_oliver_drivers_pastoral.R'
       - 'R/rss_oliver_thematic_batch.R'
       - 'tests/test_rss_thematic_batch.R'
+      - 'R/rss_thematic_qa.R'
       - '.github/workflows/forest-2024-synthetic.yml'
   pull_request:
     paths:
