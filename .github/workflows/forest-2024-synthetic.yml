@@ -38,6 +38,8 @@ on:
       - 'tests/test_rss_oliver_category_mapping.R'
       - 'R/rss_oliver_calibration_closure.R'
       - 'tests/test_rss_oliver_calibration_closure.R'
+      - 'R/rss_oliver_category_audit.R'
+      - 'tests/test_rss_oliver_category_audit.R'
       - '.github/workflows/forest-2024-synthetic.yml'
   pull_request:
     paths:
@@ -71,5 +73,6 @@ jobs:
           Rscript tests/test_rss_oliver_calibration.R
           Rscript tests/test_rss_oliver_category_mapping.R
           Rscript tests/test_rss_oliver_calibration_closure.R
+          Rscript tests/test_rss_oliver_category_audit.R
           Rscript tests/test_rss_joint_change.R
           Rscript tests/test_rss_multivariable.R
