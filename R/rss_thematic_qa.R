@@ -5,7 +5,7 @@ rss_thematic_qa <- function(raw, periods=c("0010","1018","1824")) {
   d<-as.character(raw[[paste0("Driver",p)]])
   change<-as.character(raw[[paste0("CHANGE",p)]])
   applicable<-!is.na(d)&!d%in%c("NA","","Not applicable (driver)")
-  mismatch<-applicable&!(
+  mismatch<-applicable&!is.na(change)&!(
     (grepl("^Loss_",d)&change=="Forest Loss")|
     (grepl("^Gain_",d)&change%in%c("Forest gain","Forest Gain")))
   out[[p]]<-data.frame(period=p,n=nrow(raw),
