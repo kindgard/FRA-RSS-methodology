@@ -32,13 +32,14 @@ Verificar antes de calcular si `EFKm2` mantiene su sentido: área representada *
 - `forest_change_annual.csv`: pérdida, ganancia y cambio neto puntual; **no asigna incertidumbre inventada al cambio neto**.
 - `ipcc_category_audit.csv`, `calibration_l3_closure.csv`, `calibration_l3_by_stratum.csv`, `calibration_l3_dictionary.csv`: se generan según aprobación de las compuertas anteriores.
 - `drivers_dictionary.csv`, `drivers_calibrated_by_stratum.csv`, `drivers_Global.csv`, `drivers_Region.csv` y otros dominios: drivers por período, sujetos a QA.
+- `crops_dictionary.csv`, `crops_calibrated_by_stratum.csv`, `crops_Global.csv` y otros dominios: categorías de cultivos 2024, sujetas a QA.
 - `pastoralism_dictionary.csv`, `pastoralism_calibrated_by_stratum.csv`, `pastoralism_Global.csv`, `pastoralism_Region.csv` y otros dominios: categorías de pastoralismo, sujetos a QA.
 - `module_status.csv`: estado de cada bloque, con razones exactas de bloqueo.
 
 El criterio de promoción a reportes oficiales es: checksum y conteos registrados; cero mapeos desconocidos; política aprobada para faltantes; concordancia de pesos con la plantilla; cierre de las particiones mutuamente excluyentes y diferencias contra referencia documentadas; comparación numérica del código adaptado con Oliver en la misma base.
 
 ## Módulos aún pendientes
-`drivers` y `pastoralism` se ejecutan con indicadores y calibración del notebook cuando el nuevo RAW contiene sus columnas. Sus resultados se marcan `READY_FOR_REVIEW` y no deben considerarse oficiales sin validación frente a Oliver y QA categórico. `crops` y `full_notebook_equivalence` siguen `BLOCKED`. La fuente RAW queda intacta.
+`drivers` y `pastoralism` se ejecutan con indicadores y calibración del notebook cuando el nuevo RAW contiene sus columnas. Sus resultados se marcan `READY_FOR_REVIEW` y no deben considerarse oficiales sin validación frente a Oliver y QA categórico. `crops` también se calcula a partir de `TempOrPerenn` y se calibra contra `OL%24`, sujeto a QA. `full_notebook_equivalence` sigue `BLOCKED`. La fuente RAW queda intacta.
 
 ## Para cada nuevo ciclo
 1. Congelar y etiquetar la versión del RAW; conservar también el archivo anterior.
