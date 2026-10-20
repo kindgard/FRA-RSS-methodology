@@ -10,6 +10,7 @@ rss_oliver_driver_parent <- function(variable) {
  paste0(base,p)
 }
 rss_oliver_calibrate <- function(centroid_cells,hexagon_cells,parent_map,
+                                 centroid_reference_cells=centroid_cells,
                                  variance_method=c("original_unscaled","scaled_fixed_ratio"),
                                  zero_policy=c("oliver_zero","error")) {
  variance_method<-match.arg(variance_method)
@@ -17,7 +18,8 @@ rss_oliver_calibrate <- function(centroid_cells,hexagon_cells,parent_map,
  keys<-c("Subregion","GEZ","Nstr")
  required<-c(keys,"variable","area_km2","area_variance_km4")
  if(!all(required%in%names(centroid_cells))||
-    !all(required%in%names(hexagon_cells)))stop("Missing cell columns")
+    !all(required%in%names(hexagon_cells))||
+    !all(required%in%names(centroid_reference_cells)))stop("Missing cell columns")
  if(!is.data.frame(parent_map)||!all(c("variable","parent")%in%names(parent_map))||
     anyDuplicated(parent_map$variable))stop("Invalid parent mapping")
  c<-centroid_cells
@@ -25,7 +27,7 @@ rss_oliver_calibrate <- function(centroid_cells,hexagon_cells,parent_map,
  if(anyNA(c$parent))stop("Unmapped centroid variables")
  factor_frame<-merge(
   hexagon_cells[,c(keys,"variable","area_km2")],
-  centroid_cells[,c(keys,"variable","area_km2")],
+  centroid_reference_cells[,c(keys,"variable","area_km2")],
   by=c(keys,"variable"),suffixes=c("_hex","_cen"))
  factor_frame$scale<-ifelse(factor_frame$area_km2_cen>0,
     factor_frame$area_km2_hex/factor_frame$area_km2_cen,0)
