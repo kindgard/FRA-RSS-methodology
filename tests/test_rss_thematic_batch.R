@@ -3,6 +3,7 @@ source("R/rss_oliver_report_domains.R")
 source("R/rss_oliver_regions.R")
 source("R/rss_oliver_calibration.R")
 source("R/rss_oliver_drivers_pastoral.R")
+source("R/rss_thematic_qa.R")
 source("R/rss_oliver_thematic_batch.R")
 d<-data.frame(Subreg=rep("SAM",4),GEZ=rep(11,4),Nstr0024=rep(1,4),EFKm2=rep(10,4))
 for(p in c("0010","1018","1824")){
@@ -30,6 +31,7 @@ dir<-tempfile();dir.create(dir)
 saved<-character(); states<-data.frame(module=character(),status=character())
 save_csv<-function(x,n){write.csv(x,file.path(dir,n),row.names=FALSE);saved<<-c(saved,n)}
 status<-function(m,s,r){states<<-rbind(states,data.frame(module=m,status=s))}
+stopifnot(all(rss_thematic_qa(d)$status=="PASS"))
 rss_oliver_run_thematic(d,x,save_csv,status)
 stopifnot(any(states$module=="drivers"),any(states$module=="pastoralism"),any(states$module=="crops"),
  "drivers_dictionary.csv"%in%saved,"pastoralism_dictionary.csv"%in%saved,"crops_dictionary.csv"%in%saved,
