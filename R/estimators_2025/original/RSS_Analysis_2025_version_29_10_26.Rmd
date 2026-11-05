@@ -1,0 +1,1528 @@
+---
+title: "R Code and Documentation for the FRA 2025 Remote Sensing Survey Analysis"
+author: Oliver Stoner
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+---
+
+# Introduction
+
+This document serves as the guide to the R code for the processing of FRA 2025 Remote Sensing Survey Data.
+
+The .hmtl file serves as the documentation, while the R code can be edited and executed using the .Rmd file, opened in the RStudio software. 
+
+The R code is arranged into "chunks", which can be run one at a time; alternatively, all code can be run using the "Run All" option in RStudio.
+
+ ![](Screenshots/Screenshot 2026-05-20 at 12.46.53.png)
+The code is also organised by sections, which can be navigated using the menu that, by default, is located just above the console in the RStudio window. The button to open the menu has text inside corresponding to the current section of code that is displayed. In the below example, the user would need to click "Chunk 33: Load forest area template" to open the menu.
+
+ ![](Screenshots/Screenshot 2026-05-20 at 12.47.14.png)
+
+The only input file required is an Excel file with sheets for the raw data and weights. Care should be taken to ensure that the column and row ranges specified are up to date when loading the latest file.
+
+The code includes several checks of the consistency of the raw data, for example that the number of samples given in the weights sheet matches the number of samples in the raw data sheet. Some checks will only provide a warning if the desired condition is not met, while others will interrupt the code as they are considered more serious.
+
+# Initial Setup
+
+This section contains specifications that may need to be checked and potentially changed each year, e.g. as file names change.
+
+First we load in some necessary R packages.
+
+```{r Packages, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(magrittr)
+library(openxlsx)
+library(readxl)
+```
+
+Then we specify the file path for the Excel input file that we need to load, and the file path for the main Excel output file.
+
+```{r File paths}
+data_file <- "Inputs/GLUE2024_template_FRARSS_v1_RawData_v24_Drivers_10092026_ - Copy.xlsx"
+
+output_file <- "Outputs/2025_estimates_from_R_05_10_26.xlsx"
+```
+
+## Helper functions and mappings
+
+This subsection defines helper function(s) that are repeated for more than one variable in both the hexagon and centroid analyses. The first function below is used to aggregate area and variance estimates from by subregion and stratum level up to coarser levels (e.g. subregion only, global, GEZ only).
+
+```{r Aggregate area function}
+# Function to aggregate area by stratum up to coarser levels
+# (e.g. from Subregion x GEZ x Nstr up to Subregion).
+aggregate_area <- function(area_by_stratum, grouping) {
+  area_by_stratum %>%
+    select(
+      all_of(grouping),
+      variable_group,
+      variable,
+      time_period,
+      area,
+      area_variance,
+      area_std,
+      area_CoV,
+      `area_rel_plus_minus`
+    ) %>%
+    group_by(
+      across(all_of(grouping)),
+      variable_group,
+      variable,
+      time_period
+    ) %>%
+    summarise(
+      area = sum(area),
+      area_variance = sum(area_variance),
+      # Area and area_variance have now been aggregated, so
+      # e.g. for area_std we are now taking the square root
+      # of the aggregated value.
+      area_std = sqrt(area_variance),
+      area_CoV = if_else(abs(area) <= 1e-10, NA_real_, area_std / abs(area)),
+      `area_rel_plus_minus` = 100 * area_CoV * 1.96
+    )
+}
+```
+
+Next, we define mappings of regions to subregons, climatic domains to global ecological zones (GEZs), and level 1 land use classes to level 2 and level 3 subclasses. Note that there are more efficient ways to define mappings (with respect to the length of the code), but it was decided that writing them out explicitly is clearer and more transparent. *These mappings need to checked carefully*.
+
+```{r General mappings}
+# Mapping of subregion codes to subregion and region names.
+region_mapping <- tibble::tribble(
+  ~Subregion , ~Subregion_name               , ~Region                     ,
+  "NAM"      , "North America"               , "North and Central America" ,
+  "CAM"      , "Central America"             , "North and Central America" ,
+  "CAB"      , "Caribbean"                   , "North and Central America" ,
+  "SAM"      , "South America"               , "South America"             ,
+  "EUR"      , "Europe (including Russia)"   , "Europe (including Russia)" ,
+  "NAF"      , "North Africa"                , "Africa"                    ,
+  "WAF"      , "Western and Central Africa"  , "Africa"                    ,
+  "EAF"      , "Eastern and Southern Africa" , "Africa"                    ,
+  "WAS"      , "Western and Central Asia"    , "Asia"                      ,
+  "EAS"      , "East Asia"                   , "Asia"                      ,
+  "SSA"      , "Southern and Southeast Asia" , "Asia"                      ,
+  "OCE"      , "Oceania"                     , "Oceania"
+)
+
+# Mapping of GEZ codes to GEZ and climatic domain names.
+gez_mapping <- tribble(
+  ~GEZ , ~GEZ_name                      , ~Climatic_domain ,
+    11 , "Tropical rainforest"          , "Tropicals"      ,
+    12 , "Tropical moist forest"        , "Tropicals"      ,
+    13 , "Tropical dry forest"          , "Tropicals"      ,
+    14 , "Tropical shrubland"           , "Tropicals"      ,
+    15 , "Tropical desert"              , "Tropicals"      ,
+    16 , "Tropical mountain system"     , "Tropicals"      ,
+
+    21 , "Subtropical humid forest"     , "Subtropicals"   ,
+    22 , "Subtropical dry forest"       , "Subtropicals"   ,
+    23 , "Subtropical steppe"           , "Subtropicals"   ,
+    24 , "Subtropical desert"           , "Subtropicals"   ,
+    25 , "Subtropical mountain system"  , "Subtropicals"   ,
+
+    31 , "Temperate oceanic forest"     , "Temperates"     ,
+    32 , "Temperate continental forest" , "Temperates"     ,
+    33 , "Temperate steppe"             , "Temperates"     ,
+    34 , "Temperate desert"             , "Temperates"     ,
+    35 , "Temperate mountain system"    , "Temperates"     ,
+
+    41 , "Boreal coniferous forest"     , "Boreal"         ,
+    42 , "Boreal tundra woodland"       , "Boreal"         ,
+    43 , "Boreal mountain system"       , "Boreal"         ,
+
+    50 , "Polar"                        , "Polar"
+)
+
+# Mapping of subclasses at different levels.
+subclass_mapping <- tribble(
+  ~level_3_subclass                 , ~level_2_subclass               , ~level_1_subclass ,
+
+  # Forest
+  "11Forest nat stocked"            , "Naturally regenerating forest" , "FOREST%24"       ,
+  "12Forest nat temp unstocked"     , "Naturally regenerating forest" , "FOREST%24"       ,
+  "13Forest planted stocked"        , "Planted forest"                , "FOREST%24"       ,
+  "14Forest planted temp unstocked" , "Planted forest"                , "FOREST%24"       ,
+  "15Mangroves"                     , "Mangroves"                     , "FOREST%24"       ,
+
+  # Other wooded land
+  "19Other wooded"                  , "Other wooded"                  , "OWL%24"          ,
+
+  # Other land
+  "21Cropland no trees"             , "Cropland"                      , "OL%24"           ,
+  "22Cropland trees"                , "Cropland"                      , "OL%24"           ,
+  "23Grassland no trees"            , "Grassland"                     , "OL%24"           ,
+  "24Grassland trees"               , "Grassland"                     , "OL%24"           ,
+  "25Oil palm"                      , "Oil palm"                      , "OL%24"           ,
+  "35Settlement no trees"           , "Settlement"                    , "OL%24"           ,
+  "36Settlement trees"              , "Settlement"                    , "OL%24"           ,
+  "31Bare soil"                     , "Bare soil"                     , "OL%24"           ,
+  "44Shifting cultivations"         , "Shifting cultivations"         , "OL%24"           ,
+
+  # Water
+  "41Inland water"                  , "Inland water"                  , "WATER%24"        ,
+  "42Sea water"                     , "Sea water"                     , "WATER%24"        ,
+  "43Permanent ice"                 , "Permanent ice"                 , "WATER%24"
+)
+
+# List of groupings for which we will generate estimates.
+groupings <- list(
+  All_strata = c("Subregion", "Subregion_name", "GEZ", "GEZ_name", "Nstr"),
+  Subregion = c("Subregion", "Subregion_name"),
+  GEZ = c("GEZ", "GEZ_name"),
+  Climatic_domain = "Climatic_domain",
+  Nstr = "Nstr",
+  Region = "Region",
+  Ecoregion = c("Subregion_name", "GEZ_name"),
+  Global = character(0)
+)
+```
+
+# Data Processing and Checking
+
+In this section, we load and format the raw data and weights, before performing a few data consistency checks.
+
+First, we load the raw data.
+
+```{r Load raw data,warning=FALSE}
+# Load the samples (one row per sampled hexagon).
+original_raw_data <- read_excel(data_file, sheet = "RawData")
+
+samples <- original_raw_data %>%
+  # Change some column names.
+  rename(Subregion = Subreg, Country = Country_n, Nstr = Nstr0024)
+```
+
+Next, we will load the sample weights by subregion and stratum. Since multiple tables are presented side-by-side in the weights sheet, we need to specify a cell range argument in read_excel, to capture the relevant data. *This needs to be checked whenever the input data file is changed*.
+
+```{r Load sample weights by stratum}
+# Load the sample weights by subregion, GEZ, Nstr.
+original_weights <- read_excel(data_file, sheet = "weights", range = "G2:I623")
+
+sample_weights <- original_weights %>%
+  mutate(
+    # Extract names from SubRegGEZNstr.
+    Subregion = substr(SubRegGEZNstr, 1, 3),
+    GEZ = as.numeric(substr(SubRegGEZNstr, 4, 5)),
+    Nstr = as.numeric(substr(SubRegGEZNstr, 6, 6)),
+    # Compute expansion weights.
+    exp_weight = Nh / nh,
+    # Compute total hexagon area in km2.
+    total_hexagon_area_km2 = 0.3962 * Nh
+  ) %>%
+  rename(Npop = Nh, Nsamp = nh)
+
+# Add Npop and exp_weight from sample_weights to samples.
+samples <- samples %>%
+  left_join(
+    select(sample_weights, Subregion, GEZ, Nstr, exp_weight, Npop),
+    by = join_by(Subregion, GEZ, Nstr)
+  )
+```
+
+We also load the sample weights by country and stratum; these are currently only used in the consistency checked and the separate country-level analysis script. *Once again, the cell range needs to be checked each time the input data file is updated*.
+
+```{r Load sample weights by country}
+# Load the sample weights by country, GEZ, Nstr.
+sample_weights_by_country <- read_excel(
+  data_file,
+  sheet = "weights",
+  range = "A1:E3102"
+) %>%
+  mutate(
+    # Extract names from SubRegGEZNstr.
+    Subregion = substr(SubRegGEZNstr, 1, 3),
+    GEZ = as.numeric(substr(SubRegGEZNstr, 4, 5)),
+    Nstr = as.numeric(substr(SubRegGEZNstr, 6, 6)),
+    # Extract names from CountryGEZNstr.
+    CountryGEZNstr_len = nchar(CountryGEZNstr),
+    Country = substr(CountryGEZNstr, 1, CountryGEZNstr_len - 3),
+    # Compute expansion weights.
+    exp_weight = Nh / nh,
+    # Compute total hexagon area in km2.
+    total_hexagon_area_km2 = 0.3962 * Nh
+  ) %>%
+  rename(Npop = Nh, Nsamp = nh)
+```
+
+## Data consistency checks
+
+First, we check if there are any missing country names, subregion codes, or GEZ codes. We use a helper function to detect missing values and interrupt the code when they are found.
+
+```{r Check for missing name variables}
+# Helper function to check for missing values in a variable.
+check_missing <- function(x, variable, dataset_name) {
+  if (any(is.na(x))) {
+    # Interrupt the code if any missing values are found.
+    stop(
+      variable,
+      " missing for at least one row in ",
+      dataset_name,
+      ".",
+      call. = FALSE
+    )
+  }
+}
+
+check_missing(samples$Subregion, "Subregion code", "the raw data")
+check_missing(samples$Country, "Country name", "the raw data")
+check_missing(samples$GEZ, "GEZ", "the raw data")
+check_missing(samples$GEZNstr0024, "GEZNstr0024", "the raw data")
+
+check_missing(sample_weights$Subregion, "Subregion code", "sample_weights")
+check_missing(sample_weights$GEZ, "GEZ", "sample_weights")
+
+check_missing(
+  sample_weights_by_country$Subregion,
+  "Subregion code",
+  "sample_weights_by_country"
+)
+check_missing(
+  sample_weights_by_country$Country,
+  "Country name",
+  "sample_weights_by_country"
+)
+check_missing(sample_weights_by_country$GEZ, "GEZ", "sample_weights_by_country")
+```
+
+Next, we check the number of samples given in weights against the actual number of samples in the raw data, by subregion and by stratum.
+
+```{r Check number of samples, message=FALSE}
+# Check Nsamp from the weights against the actual number of samples by subregion.
+check_samples_by_subregion <- full_join(
+  samples %>% group_by(Subregion) %>% summarise(n1 = n()),
+  sample_weights %>% group_by(Subregion) %>% summarise(n2 = sum(Nsamp)),
+  by = join_by(Subregion)
+)
+
+if (!all(check_samples_by_subregion$n1 == check_samples_by_subregion$n2)) {
+  warning("Number of samples not equal to Nsamp for at least one subregion.")
+}
+
+# Then check by subregion and stratum (GEZ x Nstr).
+check_samples_by_stratum <- full_join(
+  samples %>% group_by(Subregion, GEZ, Nstr) %>% summarise(n1 = n()),
+  sample_weights %>%
+    group_by(Subregion, GEZ, Nstr) %>%
+    summarise(n2 = sum(Nsamp)),
+  by = join_by(Subregion, GEZ, Nstr)
+) %>%
+  mutate(n1 = ifelse(is.na(n1), 0, n1), diff = n1 - n2)
+
+if (!all(check_samples_by_stratum$n1 == check_samples_by_stratum$n2)) {
+  warning("Number of samples not equal to Nsamp for at least one stratum.")
+}
+```
+
+We also check whether the combined label columns (`CountryGEZNstr0024` and `SubRegGEZNstr`) match the manual combination of the corresponding individual name columns.
+
+```{r Label consistency checks}
+# Manually create combined labels.
+samples %<>%
+  mutate(
+    check_merging_1 = paste0(Country, GEZ, Nstr),
+    check_merging_2 = paste0(Subregion, GEZ, Nstr)
+  )
+
+# Country code check.
+merged_label_not_equal_1 <- filter(
+  samples,
+  check_merging_1 != CountryGEZNstr0024
+)
+
+if (nrow(merged_label_not_equal_1) > 0) {
+  warning(paste0(
+    "CountryGEZNstr not equal to recreated label for ",
+    nrow(merged_label_not_equal_1),
+    " rows."
+  ))
+}
+
+# Subregion code check.
+merged_label_not_equal_2 <- filter(samples, check_merging_2 != SubRegGEZNstr)
+
+if (nrow(merged_label_not_equal_2) > 0) {
+  warning(paste0(
+    "SubregGEZNstr not equal to recreated label for ",
+    nrow(merged_label_not_equal_2),
+    " rows."
+  ))
+}
+```
+
+Finally, we check for missing values in variables where we believe there should not be any. 
+
+```{r Ranch & pastoralism and crops missing value checks}
+check_missing(
+  c(samples$CHANGE0010, samples$CHANGE1018, samples$CHANGE1824),
+  "Centroid change variables",
+  "the raw data"
+)
+check_missing(samples$IPCC24, "IPCC24", "the raw data")
+check_missing(
+  samples$Ranch_Pastoralism,
+  "Ranch and pastoralism",
+  "the raw data"
+)
+```
+
+# Hexagon Calculations
+
+We are now ready to computing proportion and area estimates. We do the calculations for the hexagon-level variables first as these are simpler. 
+
+First, we define a mapping of the variable names to variable groups and time periods, for easier filtering in the final file.
+
+```{r Hexagon variable mapping}
+# Mapping of variable names we will calculate to their group and time period.
+hexagon_variables <- tibble::tribble(
+  ~variable             , ~variable_group   , ~time_period ,
+  "FOREST%24"           , "Area from hex"   , "2024"       ,
+  "OWL%24"              , "Area from hex"   , "2024"       ,
+  "OL%24"               , "Area from hex"   , "2024"       ,
+  "WATER%24"            , "Area from hex"   , "2024"       ,
+  "%FORGAIN 2000-2010"  , "Change from hex" , "2000-2010"  ,
+  "%FORLOSS 2000-2010"  , "Change from hex" , "2000-2010"  ,
+  "%STABFOR 2000-2010"  , "Change from hex" , "2000-2010"  ,
+  "%StabNFor 2000-2010" , "Change from hex" , "2000-2010"  ,
+  "%FORGAIN 2010-2018"  , "Change from hex" , "2010-2018"  ,
+  "%FORLOSS 2010-2018"  , "Change from hex" , "2010-2018"  ,
+  "%STABFOR 2010-2018"  , "Change from hex" , "2010-2018"  ,
+  "%StabNFor 2010-2018" , "Change from hex" , "2010-2018"  ,
+  "%FORGAIN 2018-2024"  , "Change from hex" , "2018-2024"  ,
+  "%FORLOSS 2018-2024"  , "Change from hex" , "2018-2024"  ,
+  "%STABFOR 2018-2024"  , "Change from hex" , "2018-2024"  ,
+  "%StabNFor 2018-2024" , "Change from hex" , "2018-2024"
+)
+```
+
+The historical forest areas below are reconstructed per sampled hexagon by working backwards from the 2024 forest-area proportion and the three periods of gains and losses. Net forest-area change is also constructed per hexagon as gain minus loss for each period, so that its variance includes the covariance between those components.
+
+```{r Construct forest area time series from hexagons}
+# Reconstruct forest-area proportions for each reference year.
+forest_area_inputs <- c(
+  "FOREST%24",
+  "%FORGAIN 2000-2010", "%FORLOSS 2000-2010",
+  "%FORGAIN 2010-2018", "%FORLOSS 2010-2018",
+  "%FORGAIN 2018-2024", "%FORLOSS 2018-2024"
+)
+
+samples <- samples %>%
+  mutate(
+    `Forest area 2024` = `FOREST%24`,
+    `Forest area 2018` = `Forest area 2024` -
+      `%FORGAIN 2018-2024` + `%FORLOSS 2018-2024`,
+    `Forest area 2010` = `Forest area 2018` -
+      `%FORGAIN 2010-2018` + `%FORLOSS 2010-2018`,
+    `Forest area 2000` = `Forest area 2010` -
+      `%FORGAIN 2000-2010` + `%FORLOSS 2000-2010`
+  )
+
+forest_area_variables <- c(
+  "Forest area 2000", "Forest area 2010",
+  "Forest area 2018", "Forest area 2024"
+)
+
+# Net forest-area change is the signed difference between the
+# proportions gained and lost in each sampled hexagon.
+# Calculating this before stratified variance estimation preserves
+# the gain/loss covariance within each stratum.
+samples <- samples %>%
+  mutate(
+    `Forest area net change 2000-2010` =
+      `%FORGAIN 2000-2010` - `%FORLOSS 2000-2010`,
+    `Forest area net change 2010-2018` =
+      `%FORGAIN 2010-2018` - `%FORLOSS 2010-2018`,
+    `Forest area net change 2018-2024` =
+      `%FORGAIN 2018-2024` - `%FORLOSS 2018-2024`
+  )
+
+forest_net_change_variables <- c(
+  "Forest area net change 2000-2010",
+  "Forest area net change 2010-2018",
+  "Forest area net change 2018-2024"
+)
+
+# Calculate total change for 2000-2024 within each sampled hexagon,
+# before computing stratum-level means and variances.
+samples <- samples %>%
+  mutate(
+    `Total forest area net change 2000-2024` =
+      `Forest area net change 2000-2010` +
+      `Forest area net change 2010-2018` +
+      `Forest area net change 2018-2024`,
+    `Total deforestation 2000-2024` =
+      `%FORLOSS 2000-2010` +
+      `%FORLOSS 2010-2018` +
+      `%FORLOSS 2018-2024`,
+    `Total forest area expansion 2000-2024` =
+      `%FORGAIN 2000-2010` +
+      `%FORGAIN 2010-2018` +
+      `%FORGAIN 2018-2024`
+  )
+
+total_change_variables <- c(
+  "Total forest area net change 2000-2024",
+  "Total deforestation 2000-2024",
+  "Total forest area expansion 2000-2024"
+)
+
+# The derived fractions should also be in [0, 1], allowing a tiny
+# numerical tolerance for floating-point arithmetic.
+# tol <- 1e-8
+# stopifnot(all(vapply(
+#   samples[forest_area_variables],
+#   function(x) all(is.finite(x) & x >= -tol & x <= 1 + tol),
+#   logical(1)
+# )))
+
+hexagon_variables <- bind_rows(
+  hexagon_variables,
+  tibble(
+    variable = forest_area_variables,
+    variable_group = "Forest area time series",
+    time_period = c("2000", "2010", "2018", "2024")
+  ),
+  tibble(
+    variable = forest_net_change_variables,
+    variable_group = "Forest area net change",
+    time_period = c("2000-2010", "2010-2018", "2018-2024")
+  ),
+  tibble(
+    variable = total_change_variables,
+    variable_group = "Total change",
+    time_period = "2000-2024"
+  )
+)
+```
+
+Next, for each variable, we compute the mean proportion by subregion and stratum.
+
+```{r Compute hexagon proportions by stratum}
+# Compute mean percentages at subregion x stratum level.
+hexagon_proportions_by_stratum <- samples %>%
+  select(
+    all_of(hexagon_variables$variable),
+    Subregion,
+    GEZ,
+    Nstr,
+    exp_weight
+  ) %>%
+  group_by(Subregion, GEZ, Nstr) %>%
+  summarise(
+    across(
+      all_of(hexagon_variables$variable),
+      # We use the mean because exp_weight is constant within
+      # subregion x stratum cells (and so the mean and weighted mean are the same).
+      ~ mean(.x, na.rm = T)
+    ),
+    .groups = "drop"
+  ) %>%
+  pivot_longer(
+    cols = all_of(hexagon_variables$variable),
+    names_to = "variable",
+    values_to = "proportion"
+  )
+```
+
+Next, we compute the variance of the proportions using the formula given in the FRA 2020 methodology document (but treating subregion as an extra stratum).
+
+```{r Compute variance for hexagon variables}
+# Compute the variance for each variable.
+hexagon_proportion_variance_by_stratum <- samples %>%
+  select(
+    all_of(hexagon_variables$variable),
+    Subregion,
+    GEZ,
+    Nstr,
+    exp_weight
+  ) %>%
+  group_by(Subregion, GEZ, Nstr) %>%
+  summarise(
+    across(
+      all_of(hexagon_variables$variable),
+      ~ {
+        # If there are no samples or only one sample, make the variance 0.
+        if (n() > 1) {
+          var(.x) / n()
+        } else {
+          0
+        }
+      }
+    ),
+    .groups = "drop"
+  ) %>%
+  pivot_longer(
+    cols = all_of(hexagon_variables$variable),
+    names_to = "variable",
+    values_to = "proportion_variance"
+  )
+```
+
+Then, we combine the estimated proportions with the variance, before computing standard deviations and the relative measures of uncertainty. The column `area_rel_plus_minus` gives the extent of an approximate 95% interval as a percentage of the area estimate.
+
+```{r Join hexagon proportions by stratum with variances}
+# Join the mean percentage estimates by stratum with the variances.
+hexagon_estimates_by_stratum <- hexagon_proportions_by_stratum %>%
+  left_join(
+    hexagon_proportion_variance_by_stratum,
+    by = join_by(Subregion, GEZ, Nstr, variable)
+  ) %>%
+  # Add the sample weights.
+  left_join(
+    select(sample_weights, Subregion, GEZ, Nstr, total_hexagon_area_km2),
+    by = join_by(Subregion, GEZ, Nstr)
+  ) %>%
+  # Compute estimates in terms of area.
+  mutate(
+    area = proportion * total_hexagon_area_km2,
+    area_variance = proportion_variance * total_hexagon_area_km2^2,
+    # Standard error.
+    area_std = sqrt(area_variance),
+    # Coefficient of variation.
+    area_CoV = if_else(abs(area) <= 1e-10, NA_real_, area_std / abs(area)),
+    # Relative confidence interval +-.
+    `area_rel_plus_minus` = 100 * area_CoV * 1.96
+  ) %>%
+  # Join with mappings.
+  left_join(region_mapping, by = join_by(Subregion)) %>%
+  left_join(gez_mapping, by = join_by(GEZ)) %>%
+  left_join(hexagon_variables, by = join_by(variable)) %>%
+  # Use a common variable label, with the year in time_period.
+  mutate(
+    variable = case_when(
+      variable_group == "Forest area time series" ~ "Forest area",
+      variable_group == "Forest area net change" ~ "Forest area net change",
+      variable_group == "Total change" ~ sub(" 2000-2024$", "", variable),
+      TRUE ~ variable
+    )
+  )
+```
+
+Finally, we aggregate the hexagon results according to all specified groupings.
+
+```{r Aggregate hexagon results, message=FALSE}
+hexagon_results <- lapply(groupings, function(g) {
+  hexagon_estimates_by_stratum %>%
+    # Use the aggregate_area helper function.
+    aggregate_area(g)
+})
+```
+
+# Centroid Calculations
+
+First, we make some corrections for consistency of the level 3 subclass names. Some corrections may no longer apply.
+
+```{r Correct subclass names}
+# Make some corrections for consistency of the subclass names.
+samples %<>%
+  mutate(
+    level_3_subclass = case_match(
+      IPCC24,
+      "13forest planted stocked" ~ "13Forest planted stocked",
+      "14forest planted temp unstocked" ~ "14Forest planted temp unstocked",
+      "21cropland no trees" ~ "21Cropland no trees",
+      "22cropland trees" ~ "22Cropland trees",
+      "35Settlement  no trees" ~ "35Settlement no trees",
+      "36Settlement  trees" ~ "36Settlement trees",
+      .default = IPCC24
+    )
+  ) %>%
+  left_join(subclass_mapping, by = join_by(level_3_subclass))
+```
+
+We can then check the correction is sufficient by comparing the number of unique level 3 subclasses to what we expect, based on the number of rows of subclass mapping.
+
+```{r Check subclass names}
+l2_variables <- unique(samples$level_2_subclass)
+l3_variables <- unique(samples$level_3_subclass)
+
+# Check the number of level 3 subclasses is correct. If not,
+# it means there may be a typo that should be rectified.
+if (length(l3_variables) > nrow(subclass_mapping)) {
+  stop("Some level 3 subclasses may not have the correct spelling.")
+}
+```
+
+Next, we define the subcategory change, driver of change, driver of change scale, ranch & pastoralism, and crop variable lists. *Care should be taken to ensure correct handling of missing values (blanks) and/or "NA" values for each variable, depending on how they are used in the raw data.*
+
+```{r Centroid variable lists}
+# Subcategory change variables.
+subcat_change_variables <- c(
+  "Stable Stocked",
+  "Stable Unstocked",
+  "Unstocked to Stocked",
+  "Stocked to Unstocked",
+  "Natural forest to plantation",
+  "Not applicable (subcategory)"
+)
+
+# Driver of change variables.
+driver_variables <- c(
+  samples$Driver0010,
+  samples$Driver1018,
+  samples$Driver1824
+) %>%
+  unique() %>%
+  sort()
+driver_variables[driver_variables == "NA"] <- "Not applicable (driver)"
+driver_variables
+
+# Driver scale variables.
+scale_variables <- c(
+  samples$ScaleDriver0010_2,
+  samples$ScaleDriver1018_2,
+  samples$ScaleDriver1824_2
+) %>%
+  unique() %>%
+  sort()
+scale_variables[scale_variables == "NA"] <- "Not applicable (driver scale)"
+scale_variables
+
+# Ranch and pastoralism variables.
+ranch_pasto_variables <- samples$Ranch_Pastoralism %>%
+  unique() %>%
+  sort()
+ranch_pasto_variables <- c(
+  ranch_pasto_variables,
+  "Not applicable (ranch and pastoralism)"
+)
+ranch_pasto_variables
+
+# Crop variables.
+crop_variables <- samples$TempOrPerenn %>% unique() %>% sort()
+crop_variables[crop_variables == "NA"] <- "Not applicable (crops)"
+crop_variables
+```
+
+Then, we define the mapping of centroid variables to variable groups, time period etc., using a combination of explicit definitions and usage of the above variable lists.
+
+```{r Centroid variable mapping}
+# Mapping of variable names we will calculate to their group and time period.
+centroid_variables <- tibble::tribble(
+  ~variable             , ~variable_group         , ~time_period ,
+  "FOREST%24"           , "Area from centroids"   , "2024"       ,
+  "OWL%24"              , "Area from centroids"   , "2024"       ,
+  "OL%24"               , "Area from centroids"   , "2024"       ,
+  "WATER%24"            , "Area from centroids"   , "2024"       ,
+  "%FORGAIN 2000-2010"  , "Change from centroids" , "2000-2010"  ,
+  "%FORLOSS 2000-2010"  , "Change from centroids" , "2000-2010"  ,
+  "%STABFOR 2000-2010"  , "Change from centroids" , "2000-2010"  ,
+  "%StabNFor 2000-2010" , "Change from centroids" , "2000-2010"  ,
+  "%FORGAIN 2010-2018"  , "Change from centroids" , "2010-2018"  ,
+  "%FORLOSS 2010-2018"  , "Change from centroids" , "2010-2018"  ,
+  "%STABFOR 2010-2018"  , "Change from centroids" , "2010-2018"  ,
+  "%StabNFor 2010-2018" , "Change from centroids" , "2010-2018"  ,
+  "%FORGAIN 2018-2024"  , "Change from centroids" , "2018-2024"  ,
+  "%FORLOSS 2018-2024"  , "Change from centroids" , "2018-2024"  ,
+  "%STABFOR 2018-2024"  , "Change from centroids" , "2018-2024"  ,
+  "%StabNFor 2018-2024" , "Change from centroids" , "2018-2024"
+) %>%
+  # Add level 3 subclass and level 2 subclass variables.
+  rbind(data.frame(
+    variable = c(l2_variables, l3_variables),
+    variable_group = c(
+      rep("Area from centroids by L2 subclass", length(l2_variables)),
+      rep("Area from centroids by L3 subclass", length(l3_variables))
+    ),
+    time_period = "2024"
+  )) %>%
+  # Add subcategory change variables.
+  rbind({
+    tibble(
+      suffix = c("0010", "1018", "1824"),
+      time_period = c("2000-2010", "2010-2018", "2018-2024")
+    ) %>%
+      expand_grid(variable_base = subcat_change_variables) %>%
+      transmute(
+        variable = paste0(variable_base, "_", suffix),
+        variable_group = "Forest subcategory change",
+        time_period
+      )
+  }) %>%
+  # Add driver of change variables.
+  rbind({
+    tibble(
+      suffix = c("0010", "1018", "1824"),
+      time_period = c("2000-2010", "2010-2018", "2018-2024")
+    ) %>%
+      expand_grid(variable_base = driver_variables) %>%
+      transmute(
+        variable = paste0(variable_base, "_", suffix),
+        variable_group = "Driver of change",
+        time_period
+      )
+  }) %>%
+  # Add driver scale variables.
+  rbind({
+    tibble(
+      suffix = c("0010", "1018", "1824"),
+      time_period = c("2000-2010", "2010-2018", "2018-2024")
+    ) %>%
+      expand_grid(variable_base = scale_variables) %>%
+      transmute(
+        variable = paste0(variable_base, "_", suffix),
+        variable_group = "Driver scale",
+        time_period
+      )
+  }) %>%
+  # Add ranch and pastoralism variables.
+  rbind(data.frame(
+    variable = paste0("ranch_pasto_", ranch_pasto_variables),
+    variable_group = "Ranch and pastoralism",
+    time_period = "2024"
+  )) %>%
+  # Add crop variables.
+  rbind(data.frame(
+    variable = paste0("crops_", crop_variables),
+    variable_group = "Crops",
+    time_period = "2024"
+  ))
+```
+
+Note that, for several of the variables, we temporarily add the time period as a suffix or the variable type as a prefix, as for the next steps it is convenient to have unique variable names; we remove them at the end for the final outputs.
+
+```{r Define variables with suffixes and prefixes}
+subcat_change_variables_with_suffix <- filter(
+  centroid_variables,
+  variable_group == "Forest subcategory change"
+)$variable
+
+driver_variables_with_suffix <- filter(
+  centroid_variables,
+  variable_group == "Driver of change"
+)$variable
+
+scale_variables_with_suffix <- filter(
+  centroid_variables,
+  variable_group == "Driver scale"
+)$variable
+
+ranch_pasto_variables_with_prefix <- filter(
+  centroid_variables,
+  variable_group == "Ranch and pastoralism"
+)$variable
+
+crop_variables_with_prefix <- filter(
+  centroid_variables,
+  variable_group == "Crops"
+)$variable
+```
+
+The first main complexity of processing the centroid variables is that, for several of them, the raw data starts with one column that tells you the category of the centroid (e.g. land use classification). To compute proportions, we need to convert this column into one indicator column (TRUE or FALSE) per category. The code below does this using a mixture of approaches: for some variables with only a few categories (e.g. land use class), we create indicator columns manually; for the variables with the most categories (e.g. driver of change, crops), we use the helper function `make_indicator_columns`.
+
+We also use a helper function `make_suffix_factor` to add time period suffixes to some variables and make them a factor; the factor formatting is important so that indicator columns are produced for all time periods even if no samples have that category in one of the time periods.
+
+```{r Centroid helper functions}
+# Spread a variable with many possible categorical values
+# (e.g. level 3 subclass) into one indicator column (TRUE or FALSE)
+# per category.
+make_indicator_columns <- function(
+  data,
+  names_from,
+  values_from,
+  names_prefix = NULL
+) {
+  data %>%
+    pivot_wider(
+      names_from = {{ names_from }},
+      values_from = {{ values_from }},
+      values_fill = 0,
+      values_fn = max,
+      names_expand = TRUE,
+      names_prefix = names_prefix %||% ""
+    )
+}
+
+# Add a suffix to a variable and make it a factor variable.
+make_suffix_factor <- function(x, suffix, levels) {
+  factor(paste0(x, suffix), levels = paste0(levels, suffix))
+}
+```
+
+We then create a new samples data frame `centroid_samples`, making all the indicator columns needed for the centroid variables.
+
+```{r Create indicator columns}
+# Convert categorical variables into indicator variables (one per category).
+centroid_samples <- samples %>%
+  select(
+    PL_PLOTID,
+    Subregion,
+    GEZ,
+    Nstr,
+    exp_weight,
+    Npop,
+    LU24CEN,
+    CHANGE0010,
+    SUBCTF0010,
+    CHANGE1018,
+    SUBCTF1018,
+    CHANGE1824,
+    SUBCTF1824,
+    Driver0010,
+    Driver1018,
+    Driver1824,
+    ScaleDriver0010_2,
+    ScaleDriver1018_2,
+    ScaleDriver1824_2,
+    level_1_subclass,
+    level_2_subclass,
+    level_3_subclass,
+    Ranch_Pastoralism,
+    TempOrPerenn
+  ) %>%
+  mutate(
+    # Create indicator variables (TRUE or FALSE) for land use and change type.
+    ## Land use.
+    `FOREST%24` = LU24CEN == "Forest",
+    `OWL%24` = LU24CEN == "Other Wooded Land",
+    `OL%24` = LU24CEN == "Other Land",
+    `WATER%24` = LU24CEN == "Water",
+    ## Change type.
+    `%FORGAIN 2000-2010` = CHANGE0010 %in% c("Forest gain", "Forest Gain"),
+    `%FORLOSS 2000-2010` = CHANGE0010 == "Forest Loss",
+    `%STABFOR 2000-2010` = CHANGE0010 == "Stable Forest",
+    `%StabNFor 2000-2010` = CHANGE0010 == "Stable Non Forest",
+    `%FORGAIN 2010-2018` = CHANGE1018 %in% c("Forest gain", "Forest Gain"),
+    `%FORLOSS 2010-2018` = CHANGE1018 == "Forest Loss",
+    `%STABFOR 2010-2018` = CHANGE1018 == "Stable Forest",
+    `%StabNFor 2010-2018` = CHANGE1018 == "Stable Non Forest",
+    `%FORGAIN 2018-2024` = CHANGE1824 %in% c("Forest gain", "Forest Gain"),
+    `%FORLOSS 2018-2024` = CHANGE1824 == "Forest Loss",
+    `%STABFOR 2018-2024` = CHANGE1824 == "Stable Forest",
+    `%StabNFor 2018-2024` = CHANGE1824 == "Stable Non Forest",
+    # Create dummy indicator values to use later when
+    # converting categorical variables into indicator columns.
+    value_l3 = 1,
+    value_l2 = 1,
+    value_subctf0010 = 1,
+    value_subctf1018 = 1,
+    value_subctf1824 = 1,
+    value_driver0010 = 1,
+    value_driver1018 = 1,
+    value_driver1824 = 1,
+    value_scale0010 = 1,
+    value_scale1018 = 1,
+    value_scale1824 = 1,
+    value_ranch_pasto = 1,
+    value_crop = 1,
+    # Correct NA or "NA" values in the subcategory change
+    # and driver variables.
+    across(c(SUBCTF0010, SUBCTF1018, SUBCTF1824), function(variable) {
+      case_match(
+        variable,
+        NA ~ "Not applicable (subcategory)",
+        .default = variable
+      )
+    }),
+    across(c(Driver0010, Driver1018, Driver1824), function(variable) {
+      case_match(
+        variable,
+        "NA" ~ "Not applicable (driver)",
+        .default = variable
+      )
+    }),
+    across(c(ScaleDriver0010_2, ScaleDriver1018_2, ScaleDriver1824_2), function(variable) {
+      case_match(
+        variable,
+        "NA" ~ "Not applicable (driver scale)",
+        .default = variable
+      )
+    }),
+    # Add suffixes to category values based on time period.
+    SUBCTF0010_with_suffix = make_suffix_factor(
+      SUBCTF0010,
+      "_0010",
+      subcat_change_variables
+    ),
+    SUBCTF1018_with_suffix = make_suffix_factor(
+      SUBCTF1018,
+      "_1018",
+      subcat_change_variables
+    ),
+    SUBCTF1824_with_suffix = make_suffix_factor(
+      SUBCTF1824,
+      "_1824",
+      subcat_change_variables
+    ),
+    Driver0010_with_suffix = make_suffix_factor(
+      Driver0010,
+      "_0010",
+      driver_variables
+    ),
+    Driver1018_with_suffix = make_suffix_factor(
+      Driver1018,
+      "_1018",
+      driver_variables
+    ),
+    Driver1824_with_suffix = make_suffix_factor(
+      Driver1824,
+      "_1824",
+      driver_variables
+    ),
+    ScaleDriver0010_with_suffix = make_suffix_factor(
+      ScaleDriver0010_2,
+      "_0010",
+      scale_variables
+    ),
+    ScaleDriver1018_with_suffix = make_suffix_factor(
+      ScaleDriver1018_2,
+      "_1018",
+      scale_variables
+    ),
+    ScaleDriver1824_with_suffix = make_suffix_factor(
+      ScaleDriver1824_2,
+      "_1824",
+      scale_variables
+    ),
+    # Manually create "Not applicable" categories for ranch & pastoralism and crops.
+    ranch_pasto = factor(
+      ifelse(
+        is.na(Ranch_Pastoralism),
+        "Not applicable (ranch and pastoralism)",
+        Ranch_Pastoralism
+      ),
+      levels = ranch_pasto_variables
+    ),
+    crop = factor(
+      ifelse(
+        TempOrPerenn == "NA" | is.na(TempOrPerenn),
+        "Not applicable (crops)",
+        TempOrPerenn
+      ),
+      levels = crop_variables
+    )
+  ) %>%
+  # Make indicator columns for the variables with many categories.
+  make_indicator_columns(level_3_subclass, value_l3) %>%
+  make_indicator_columns(level_2_subclass, value_l2) %>%
+  make_indicator_columns(SUBCTF0010_with_suffix, value_subctf0010) %>%
+  make_indicator_columns(SUBCTF1018_with_suffix, value_subctf1018) %>%
+  make_indicator_columns(SUBCTF1824_with_suffix, value_subctf1824) %>%
+  make_indicator_columns(Driver0010_with_suffix, value_driver0010) %>%  make_indicator_columns(Driver1018_with_suffix, value_driver1018) %>%
+  make_indicator_columns(Driver1824_with_suffix, value_driver1824) %>%
+  make_indicator_columns(ScaleDriver0010_with_suffix, value_scale0010) %>%
+  make_indicator_columns(ScaleDriver1018_with_suffix, value_scale1018) %>%
+  make_indicator_columns(ScaleDriver1824_with_suffix, value_scale1824) %>%
+  make_indicator_columns(ranch_pasto, value_ranch_pasto, "ranch_pasto_") %>%
+  make_indicator_columns(crop, value_crop, "crops_")
+```
+
+Now we can compute means at the subregion and stratum level.
+
+```{r Compute centroid proportions by stratum}
+# Compute mean percentages at subregion x stratum level.
+centroid_proportions_by_stratum <- centroid_samples %>%
+  select(
+    all_of(centroid_variables$variable),
+    Subregion,
+    GEZ,
+    Nstr,
+    exp_weight,
+    Npop
+  ) %>%
+  group_by(Subregion, GEZ, Nstr) %>%
+  summarise(
+    across(
+      all_of(centroid_variables$variable),
+      # We use the mean because exp_weight is constant within
+      # subregion x stratum cells (and so the mean and weighted mean are the same).
+      ~ mean(.x, na.rm = T)
+    ),
+    .groups = "drop"
+  ) %>%
+  pivot_longer(
+    cols = all_of(centroid_variables$variable),
+    names_to = "variable",
+    values_to = "proportion"
+  )
+```
+
+Then, we compute the variance of the proportions.
+
+```{r Compute variance for centroid variables}
+# Compute the variance for each variable.
+centroid_proportion_variance_by_stratum <- centroid_samples %>%
+  select(
+    all_of(centroid_variables$variable),
+    Subregion,
+    GEZ,
+    Nstr,
+    exp_weight
+  ) %>%
+  group_by(Subregion, GEZ, Nstr) %>%
+  summarise(
+    across(
+      all_of(centroid_variables$variable),
+      ~ {
+        # If there are no samples or only one sample, make the variance 0.
+        if (n() > 1) {
+          var(.x) / n()
+        } else {
+          0
+        }
+      }
+    ),
+    .groups = "drop"
+  ) %>%
+  pivot_longer(
+    cols = all_of(centroid_variables$variable),
+    names_to = "variable",
+    values_to = "proportion_variance"
+  )
+```
+
+As with the hexagon calculations, we join the estimated proportions with the variance, before computing standard deviations and the relative measures of uncertainty.
+
+```{r Join centroid proportions by stratum with variances}
+# Join the mean percentage estimates by stratum with the variances.
+centroid_estimates_by_stratum <- centroid_proportions_by_stratum %>%
+  left_join(
+    centroid_proportion_variance_by_stratum,
+    by = join_by(Subregion, GEZ, Nstr, variable)
+  ) %>%
+  # Add the sample weights.
+  left_join(
+    select(sample_weights, Subregion, GEZ, Nstr, total_hexagon_area_km2),
+    by = join_by(Subregion, GEZ, Nstr)
+  ) %>%
+  # Compute estimates in terms of area.
+  mutate(
+    area = proportion * total_hexagon_area_km2,
+    area_variance = proportion_variance * total_hexagon_area_km2^2,
+    # Standard error.
+    area_std = sqrt(area_variance),
+    # Coefficient of variation.
+    area_CoV = if_else(abs(area) <= 1e-10, NA_real_, area_std / abs(area)),
+    # Relative confidence interval +-.
+    `area_rel_plus_minus` = 100 * area_CoV * 1.96
+  ) %>%
+  # Join with mappings.
+  left_join(region_mapping, by = join_by(Subregion)) %>%
+  left_join(gez_mapping, by = join_by(GEZ))
+```
+
+## Area calibration
+
+The next main complexity of processing the centroid variables is the need to calibrate the estimates according to the areas estimated at the hexagon level, which are assumed to be more accurate.
+
+First, we can compute scaling factors by dividing areas estimated at the centroid level by areas estimated at the hexagon level.
+
+```{r Subclass area calibration}
+# Join the hexagon areas with corresponding centroid areas.
+calibration_scaling_factors <- full_join(
+  hexagon_estimates_by_stratum %>%
+    select(Subregion, GEZ, Nstr, variable, area) %>%
+    rename(area_from_hexagons = area),
+  centroid_estimates_by_stratum %>%
+    filter(variable %in% hexagon_variables$variable) %>%
+    select(Subregion, GEZ, Nstr, variable, area) %>%
+    rename(area_from_centroids = area),
+  by = join_by(Subregion, GEZ, Nstr, variable)
+) %>%
+  # Compute the scaling factor.
+  mutate(
+    scaling_factor = case_when(
+      # If the centroid area is 0, make the scaling factor 0 (instead of infinite).
+      area_from_centroids > 0 ~ area_from_hexagons / area_from_centroids,
+      TRUE ~ 0
+    )
+  ) %>%
+  rename(level_1_subclass = variable)
+```
+
+For each variable, we need to specify which land use or change category to base calibration on. Sometimes the calibration category is the same for all variables in a variable group, for example all the subcategory change variables pertain to forest area, so we use that. For others, we need to define a full mapping. *Note that arbitrary area calibration categories are used for the NA or blank values and so the calibrated values for the "Not applicable" variable are not provided in the final output.*
+
+```{r Map drivers of change to area calibration categories}
+driver_mapping <- tibble(
+  variable = driver_variables_with_suffix
+) %>%
+  mutate(
+    change_class = case_when(
+      # Loss is mapped to forest loss, etc.
+      str_detect(variable, "Loss_") ~ "%FORLOSS",
+      str_detect(variable, "Gain_") ~ "%FORGAIN",
+      # Arbitrary mapping of NA values.
+      str_detect(variable, "Not applicable") ~ "%StabNFor",
+      TRUE ~ NA_character_
+    ),
+    period = case_when(
+      # Time period is detected based on the suffix.
+      str_detect(variable, "_0010$") ~ "2000-2010",
+      str_detect(variable, "_1018$") ~ "2010-2018",
+      str_detect(variable, "_1824$") ~ "2018-2024",
+      TRUE ~ NA_character_
+    ),
+    level_1_subclass = paste(change_class, period)
+  ) %>%
+  select(level_1_subclass, variable)
+```
+
+```{r Map driver scale to area calibration categories}
+scale_mapping <- tibble(
+  variable = scale_variables_with_suffix
+) %>%
+  mutate(
+    change_class = case_when(
+      # Loss is mapped to forest loss, etc.
+      str_detect(variable, "ranching") ~ "%FORLOSS",
+      str_detect(variable, "Cropland") ~ "%FORLOSS",
+      # Arbitrary mapping of NA values.
+      str_detect(variable, "Not applicable") ~ "%StabNFor",
+      TRUE ~ NA_character_
+    ),
+    period = case_when(
+      # Time period is detected based on the suffix.
+      str_detect(variable, "_0010$") ~ "2000-2010",
+      str_detect(variable, "_1018$") ~ "2010-2018",
+      str_detect(variable, "_1824$") ~ "2018-2024",
+      TRUE ~ NA_character_
+    ),
+    level_1_subclass = paste(change_class, period)
+  ) %>%
+  select(level_1_subclass, variable)
+```
+
+
+```{r Map ranch & pastoralism variables to area calibration categories}
+ranch_pasto_mapping <- tibble(
+  variable = ranch_pasto_variables_with_prefix
+) %>%
+  mutate(
+    level_1_subclass = case_when(
+      str_detect(variable, "Forest_") ~ "FOREST%24",
+      str_detect(variable, "Mangroves") ~ "FOREST%24",
+      str_detect(variable, "Other_wooded_") ~ "OWL%24",
+      str_detect(variable, "water") ~ "WATER%24",
+      str_detect(variable, "ice") ~ "WATER%24",
+      # Arbitrary mapping of NA values.
+      str_detect(variable, "Not applicable") ~ "FOREST%24",
+      TRUE ~ "OL%24"
+    ),
+  ) %>%
+  select(level_1_subclass, variable)
+```
+
+Now, we can apply the scaling factors. *Note that there is some code below that has been deactivated, which would correct the variance based on the squared scaling factor. I believe this is necessary but it is not currently implemented in the Excel version of the analysis.*
+
+```{r Calibrate areas}
+# Apply the scaling factor.
+calibrated_estimates_by_stratum <- centroid_estimates_by_stratum %>%
+  # Specify which variables we will calibrate.
+  filter(
+    variable %in%
+      c(
+        l2_variables,
+        l3_variables,
+        subcat_change_variables_with_suffix,
+        driver_variables_with_suffix,
+        scale_variables_with_suffix,
+        ranch_pasto_variables_with_prefix,
+        crop_variables_with_prefix
+      )
+  ) %>%
+  # Retrieve the mapping of level 2 and level 3 subclasses to
+  # the level 1 land use classifications.
+  left_join(
+    {
+      rbind(
+        pivot_longer(
+          subclass_mapping,
+          c(level_3_subclass, level_2_subclass),
+          names_to = "original_column",
+          values_to = "variable"
+        ) %>%
+          select(level_1_subclass, variable) %>%
+          distinct(),
+        # Add the driver of change, driver scale, and ranch & pastoralism mappings.
+        driver_mapping,
+        scale_mapping,
+        ranch_pasto_mapping
+      )
+    },
+    by = join_by(variable)
+  ) %>%
+  # Calibrate subcategory change variables using forest area and crop cariables
+  # using other land.
+  mutate(
+    level_1_subclass = case_when(
+      variable %in% subcat_change_variables_with_suffix ~ "FOREST%24",
+      variable %in% crop_variables_with_prefix ~ "OL%24",
+      TRUE ~ level_1_subclass
+    )
+  ) %>%
+  # Add the calibration scaling factors.
+  left_join(
+    calibration_scaling_factors,
+    by = join_by(Subregion, GEZ, Nstr, level_1_subclass)
+  ) %>%
+  # Apply the scaling factor.
+  mutate(
+    area = area * scaling_factor,
+    # Modify variable group name to indicate calibration.
+    variable_group = case_when(
+      variable %in% l2_variables ~ "Cal. area from centroids by L2 subclass",
+      variable %in% l3_variables ~ "Cal. area from centroids by L3 subclass",
+      variable %in%
+        subcat_change_variables_with_suffix ~ "Cal. forest subcategory change",
+      variable %in% driver_variables_with_suffix ~ "Cal. driver of change",
+      variable %in% scale_variables_with_suffix ~ "Cal. driver scale",
+      variable %in%
+        ranch_pasto_variables_with_prefix ~ "Cal. ranch and pastoralism",
+      variable %in% crop_variables_with_prefix ~ "Cal. crops"
+    ),
+    # Specify the time periods.
+    time_period = case_when(
+      variable %in% c(l2_variables, l3_variables) ~ "2024",
+      variable %in%
+        subcat_change_variables_with_suffix &
+        str_ends(variable, "_0010") ~ "2000-2010",
+      variable %in%
+        subcat_change_variables_with_suffix &
+        str_ends(variable, "_1018") ~ "2010-2018",
+      variable %in%
+        subcat_change_variables_with_suffix &
+        str_ends(variable, "_1824") ~ "2018-2024",
+      variable %in%
+        driver_variables_with_suffix &
+        str_ends(variable, "_0010") ~ "2000-2010",
+      variable %in%
+        driver_variables_with_suffix &
+        str_ends(variable, "_1018") ~ "2010-2018",
+      variable %in%
+        driver_variables_with_suffix &
+        str_ends(variable, "_1824") ~ "2018-2024",
+      variable %in%
+        scale_variables_with_suffix &
+        str_ends(variable, "_0010") ~ "2000-2010",
+      variable %in%
+        scale_variables_with_suffix &
+        str_ends(variable, "_1018") ~ "2010-2018",
+      variable %in%
+        scale_variables_with_suffix &
+        str_ends(variable, "_1824") ~ "2018-2024",
+      variable %in% ranch_pasto_variables_with_prefix ~ "2024",
+      variable %in% crop_variables_with_prefix ~ "2024",
+    ),
+    # Modify variable name to indicate calibration.
+    variable = paste("Cal.", variable),
+    # PROPOSED ADJUSTMENT TO VARIANCE AFTER CALIBRATION
+    # area_variance=case_when(
+    #   variable %in% ipcc_variables ~ area_variance * scaling_factor^2,
+    #   TRUE ~ area_variance
+    # ),
+    # area_std=case_when(
+    #   variable %in% ipcc_variables ~ area_std * scaling_factor,
+    #   TRUE ~ area_std
+    # ),
+    area_CoV = if_else(abs(area) <= 1e-10, NA_real_, area_std / abs(area)),
+    `area_rel_plus_minus` = 100 * area_CoV * 1.96
+  ) %>%
+  select(-level_1_subclass)
+
+# Check if there are any missing scaling factors.
+if (any(is.na(calibrated_estimates_by_stratum$scaling_factor))) {
+  stop("Scaling factor for area calibration has missing values.")
+}
+```
+
+We can then join the calibrated estimates with the original estimates.
+
+```{r Add calibrated estimates to original estimates}
+# Add the calibrated subclass areas to all the other variables.
+centroid_estimates_by_stratum %<>%
+  left_join(centroid_variables, by = join_by(variable)) %>%
+  full_join(
+    calibrated_estimates_by_stratum,
+    by = join_by(
+      Subregion,
+      GEZ,
+      Nstr,
+      variable,
+      proportion,
+      proportion_variance,
+      total_hexagon_area_km2,
+      area,
+      area_variance,
+      area_std,
+      area_CoV,
+      area_rel_plus_minus,
+      Subregion_name,
+      Region,
+      GEZ_name,
+      Climatic_domain,
+      variable_group,
+      time_period
+    )
+  )
+```
+
+## Agroforestry
+
+The seven agroforestry subcategories and three total categories are calculated
+at the sampled centroid level, before estimating their stratified sampling
+variances. Calibration is applied separately for forest, other wooded land and
+other land. 
+
+```{r Agroforestry indicators and calibrated estimates}
+# Exact raw Ranch_Pastoralism classifications used for each subcategory.
+agroforestry_mapping <- tibble::tribble(
+  ~variable, ~ranch_code, ~land_use,
+  "Crops with trees no pastoralism", "22_np_Cropland_trees_NO_Pastoralism", "OL%24",
+  "Shifting cultivation no pastoralism", "44_np_Shifting_cultivations_NO_Pastoralism", "OL%24",
+  "Forest with pastoralism", "11_p_Forest_nat_stocked_Pastoralism", "FOREST%24",
+  "Forest with pastoralism", "12_p_Forest_nat_temp_unstocked_Pastoralism", "FOREST%24",
+  "Forest with pastoralism", "13_p_Forest_planted_stocked_Pastoralism", "FOREST%24",
+  "Forest with pastoralism", "14_p_Forest_planted_unstocked_Pastoralism", "FOREST%24",
+  "OWL with pastoralism", "19_p_Other_wooded_Pastoralism", "OWL%24",
+  "Grassland with trees with pastoralism and ranching", "24_p_Grassland_trees_Non_manage_Pastoralism", "OL%24",
+  "Grassland with trees with pastoralism and ranching", "24_s_Grassland_trees_Small_scale", "OL%24",
+  "Grassland with trees with pastoralism and ranching", "24_L_Grassland_trees_Big_scale", "OL%24",
+  "Crops with trees with pastoralism", "22_p_Cropland_trees_Pastoralism", "OL%24",
+  "Shifting cultivation with pastoralism", "44_p_Shifting_cultivations_Pastoralism", "OL%24"
+)
+
+# Relate each of the seven mutually exclusive subcategories to its total.
+agroforestry_groups <- tibble::tribble(
+  ~subcategory, ~agroforestry_total,
+  "Crops with trees no pastoralism", "Agrosilviculture",
+  "Shifting cultivation no pastoralism", "Agrosilviculture",
+  "Forest with pastoralism", "Silvopasture",
+  "OWL with pastoralism", "Silvopasture",
+  "Grassland with trees with pastoralism and ranching", "Silvopasture",
+  "Crops with trees with pastoralism", "Agrosilvopasture",
+  "Shifting cultivation with pastoralism", "Agrosilvopasture"
+)
+
+# Each centroid has a separate (0/1) membership indicator for each of the
+# seven subcategories. Multiplication by the matching land-use calibration
+# factor occurs before taking the variance and combining subcategories.
+agroforestry_centroid_components <- centroid_samples %>%
+  select(Subregion, GEZ, Nstr, Ranch_Pastoralism) %>%
+  mutate(centroid_id = row_number(), ranch_code = as.character(Ranch_Pastoralism)) %>%
+  tidyr::crossing(subcategory = unique(agroforestry_mapping$variable)) %>%
+  left_join(
+    agroforestry_mapping %>%
+      group_by(variable) %>%
+      summarise(ranch_codes = list(ranch_code),
+                land_use = first(land_use), .groups = "drop"),
+    by = join_by(subcategory == variable)
+  ) %>%
+  mutate(indicator = as.numeric(mapply(
+    function(code, codes) !is.na(code) && code %in% codes,
+    ranch_code, ranch_codes
+  ))) %>%
+  left_join(
+    calibration_scaling_factors %>%
+      select(Subregion, GEZ, Nstr, land_use = level_1_subclass, scaling_factor),
+    by = join_by(Subregion, GEZ, Nstr, land_use)
+  ) %>%
+  mutate(calibrated_indicator = indicator * scaling_factor) %>%
+  select(centroid_id, Subregion, GEZ, Nstr, subcategory, calibrated_indicator)
+
+if (anyNA(agroforestry_centroid_components$calibrated_indicator)) {
+  stop("Missing agroforestry calibration factors or classification data")
+}
+
+# The three totals are sums of the calibrated component values for the SAME
+# sampled centroid. This incorporates component covariance in their SEs.
+agroforestry_centroid_values <- bind_rows(
+  agroforestry_centroid_components %>%
+    transmute(centroid_id, Subregion, GEZ, Nstr,
+              variable_group = "Agroforestry subcategory",
+              variable = subcategory, value = calibrated_indicator),
+  agroforestry_centroid_components %>%
+    left_join(agroforestry_groups,
+              by = join_by(subcategory)) %>%
+    group_by(centroid_id, Subregion, GEZ, Nstr, agroforestry_total) %>%
+    summarise(value = sum(calibrated_indicator), .groups = "drop") %>%
+    transmute(centroid_id, Subregion, GEZ, Nstr,
+              variable_group = "Agroforestry",
+              variable = agroforestry_total, value)
+)
+
+agroforestry_estimates_by_stratum <- agroforestry_centroid_values %>%
+  group_by(Subregion, GEZ, Nstr, variable_group, variable) %>%
+  summarise(
+    proportion = mean(value),
+    proportion_variance = if (n() > 1) var(value) / n() else 0,
+    .groups = "drop"
+  ) %>%
+  left_join(
+    sample_weights %>%
+      select(Subregion, GEZ, Nstr, total_hexagon_area_km2),
+    by = join_by(Subregion, GEZ, Nstr)
+  ) %>%
+  mutate(
+    time_period = "2024",
+    area = proportion * total_hexagon_area_km2,
+    area_variance = proportion_variance * total_hexagon_area_km2^2,
+    area_std = sqrt(area_variance),
+    area_CoV = if_else(abs(area) <= 1e-10, NA_real_, area_std / abs(area)),
+    area_rel_plus_minus = 100 * area_CoV * 1.96
+  ) %>%
+  left_join(region_mapping, by = join_by(Subregion)) %>%
+  left_join(gez_mapping, by = join_by(GEZ))
+
+# This is append-only: the existing centroid estimates are untouched.
+centroid_estimates_by_stratum <- bind_rows(
+  centroid_estimates_by_stratum,
+  agroforestry_estimates_by_stratum
+)
+```
+
+Finally, we can aggregate the centroid results according to all specified groupings, using the `aggregate_area` helper function. It is at this step that we remove the time period suffixes and other prefixes from the variable names.
+
+```{r Aggregate centroid results, message=FALSE}
+centroid_results <- lapply(groupings, function(g) {
+  centroid_estimates_by_stratum %>%
+    aggregate_area(g) %>%
+    # Remove the time period suffixes.
+    mutate(
+      variable = variable %>%
+        stringr::str_remove("_(0010|1018|1824)$") %>%
+        # Remove the prefixes.
+        stringr::str_remove("ranch_pasto_") %>%
+        stringr::str_remove("crops_")
+    ) %>%
+    # Remove calibrated "Not applicable" variables.
+    filter(!stringr::str_starts(variable, "Cal. Not applicable"))
+})
+```
+
+# Final Output
+
+The last step is to join together the hexagon and centroid variable estimates, at each grouping level.
+
+```{r Combine hexagon and centroid results}
+combined_results <- list()
+for (i in 1:length(centroid_results)) {
+  combined_results[[i]] <- rbind(
+    hexagon_results[[i]],
+    centroid_results[[i]]
+  ) %>%
+    rename(
+      area_km2 = area,
+      area_km2_variance = area_variance,
+      area_km2_std = area_std
+    ) %>%
+    # Compute area with other units, e.g. million hectares.
+    mutate(area_mha = area_km2 * 0.0001, area_1000ha = area_km2 * 0.1)
+  names(combined_results)[i] <- names(groupings)[i]
+}
+```
+
+We can then save the estimates -- together with the raw data and weights used for the analysis -- into the output Excel file.
+
+```{r Write final excel file}
+wb <- createWorkbook()
+
+addWorksheet(wb, sheet = "Raw Data")
+writeDataTable(wb, sheet = "Raw Data", original_raw_data)
+addWorksheet(wb, sheet = "Weights")
+writeDataTable(wb, sheet = "Weights", sample_weights)
+
+for (i in 1:length(groupings)) {
+  addWorksheet(wb, sheet = names(groupings)[i])
+  writeDataTable(wb, sheet = names(groupings)[i], combined_results[[i]])
+}
+saveWorkbook(wb, output_file, overwrite = TRUE)
+```
