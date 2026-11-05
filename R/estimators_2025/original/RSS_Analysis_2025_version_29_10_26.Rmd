@@ -997,7 +997,8 @@ centroid_samples <- samples %>%
   make_indicator_columns(SUBCTF0010_with_suffix, value_subctf0010) %>%
   make_indicator_columns(SUBCTF1018_with_suffix, value_subctf1018) %>%
   make_indicator_columns(SUBCTF1824_with_suffix, value_subctf1824) %>%
-  make_indicator_columns(Driver0010_with_suffix, value_driver0010) %>%  make_indicator_columns(Driver1018_with_suffix, value_driver1018) %>%
+  make_indicator_columns(Driver0010_with_suffix, value_driver0010) %>%
+  make_indicator_columns(Driver1018_with_suffix, value_driver1018) %>%
   make_indicator_columns(Driver1824_with_suffix, value_driver1824) %>%
   make_indicator_columns(ScaleDriver0010_with_suffix, value_scale0010) %>%
   make_indicator_columns(ScaleDriver1018_with_suffix, value_scale1018) %>%
@@ -1526,3 +1527,4 @@ for (i in 1:length(groupings)) {
 }
 saveWorkbook(wb, output_file, overwrite = TRUE)
 ```
+
